@@ -146,7 +146,7 @@ class EnOceanGateway:
                                                auto_reconnect=self._auto_reconnect)
         else:
             # lazy import to avoid preloading library
-            from esp2_gateway_adapter.esp3_serial_com import ESP3SerialCommunicator
+            from .vendor.esp3_serial_com import ESP3SerialCommunicator
             self._bus = ESP3SerialCommunicator(filename=self.serial_path, 
                                                callback=self._callback_receive_message_from_serial_bus, 
                                                esp2_translation_enabled=True, 
@@ -215,6 +215,9 @@ class EnOceanGateway:
 
     def reconnect(self):
         self._bus.stop()
+        self._bus.join(timeout=5)
+        if self._bus.is_alive():
+            LOGGER.warning("[Gateway] [Id: %d] Old serial reader did not stop within 5 s; starting a new one anyway.", self.dev_id)
         self._init_bus()
         self._bus.start()
 
