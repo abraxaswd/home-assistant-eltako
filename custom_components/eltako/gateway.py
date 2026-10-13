@@ -150,7 +150,8 @@ class EnOceanGateway:
             self._bus = ESP3SerialCommunicator(filename=self.serial_path, 
                                                callback=self._callback_receive_message_from_serial_bus, 
                                                esp2_translation_enabled=True, 
-                                               auto_reconnect=self._auto_reconnect)
+                                               auto_reconnect=self._auto_reconnect,
+                                               logger=LOGGER)
 
         self._bus.set_status_changed_handler(self._fire_connection_state_changed_event)
 
