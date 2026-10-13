@@ -150,7 +150,9 @@ class ESP3SerialCommunicator(Communicator):
             # data = ['0xf6', '0x50', '0xff', '0xa2', '0x24', '0x1', '0x30']
             body:bytes = bytes([in_or_out, org] + packet.data[1:2] + [0,0,0] + packet.data[2:])
 
-        return prettify( ESP2Message(body) )
+        esp2_msg = prettify( ESP2Message(body) )
+        esp2_msg.dBm = getattr(packet, 'dBm', None)
+        return esp2_msg
     
 
     def __callback_wrapper(self, msg: Packet):
@@ -177,7 +179,7 @@ class ESP3SerialCommunicator(Communicator):
                             self.logger.warn("[ESP3SerialCommunicator] Cannot convert to esp2 message (%s).", msg)
                     else:
                         if msg.packet_type == PACKET.RADIO:
-                            self.logger.debug("[ESP3SerialCommunicator] %s dBm: %s", msg.dBm, esp2_msg)
+                            self.logger.debug("[ESP3SerialCommunicator] %s dBm: %s", esp2_msg.dBm, esp2_msg)
                         self._outside_callback(esp2_msg)
 
             else:

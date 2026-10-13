@@ -32,6 +32,8 @@ from homeassistant.const import (
     PERCENTAGE,
     CONF_LANGUAGE,
     UnitOfElectricPotential,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
 )
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -402,17 +404,7 @@ async def async_setup_entry(
                 LOGGER.warning("[%s] Could not load configuration", Platform.BINARY_SENSOR)
                 LOGGER.critical(e, exc_info=True)
 
-    # add id field for every device
-    for pl in PLATFORMS:
-        if pl in config:
-            for entity_config in config[pl]:
-                try:
-                    dev_conf = DeviceConf(entity_config)
-                    entities.append(StaticInfoField(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, "Id", b2s(dev_conf.id[0]), "mdi:identifier"))
-                
-                except Exception as e:
-                    LOGGER.warning("[%s] Could not load configuration", Platform.BINARY_SENSOR)
-                    LOGGER.critical(e, exc_info=True)
+    entities.extend(create_per_device_info_entities(platform, gateway, config))
 
 
     # add gateway information
@@ -428,6 +420,25 @@ async def async_setup_entry(
     validate_actuators_dev_and_sender_id(entities)
     log_entities_to_be_added(entities, platform)
     async_add_entities(entities)
+
+
+def create_per_device_info_entities(platform: str, gateway: EnOceanGateway, config: ConfigType) -> list:
+    """Id field and signal strength sensor, once per configured device address."""
+    entities = []
+    seen = set()
+    for pl in PLATFORMS:
+        for entity_config in config.get(pl, []):
+            try:
+                dev_conf = DeviceConf(entity_config)
+                if dev_conf.id[0] in seen:
+                    continue
+                seen.add(dev_conf.id[0])
+                entities.append(StaticInfoField(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep, "Id", b2s(dev_conf.id[0]), "mdi:identifier"))
+                entities.append(SignalStrengthSensor(platform, gateway, dev_conf.id, dev_conf.name, dev_conf.eep))
+            except Exception as e:
+                LOGGER.warning("[%s] Could not load configuration", pl)
+                LOGGER.critical(e, exc_info=True)
+    return entities
 
 
 class EltakoSensor(EltakoEntity, RestoreEntity, SensorEntity):
@@ -962,6 +973,34 @@ class StaticInfoField(EltakoSensor):
 
     def value_changed(self, value) -> None:
         pass
+
+class SignalStrengthSensor(EltakoSensor):
+    """Signal strength of the last telegram received from the device."""
+
+    def __init__(self, platform: str, gateway: EnOceanGateway, dev_id: AddressExpression, dev_name: str, dev_eep: EEP):
+        super().__init__(platform, gateway,
+                         dev_id=dev_id,
+                         dev_name=dev_name,
+                         dev_eep=dev_eep,
+                         description=EltakoSensorEntityDescription(
+                            key="signal_strength",
+                            name="Signal Strength",
+                            icon="mdi:signal",
+                            device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+                            native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+                            state_class=SensorStateClass.MEASUREMENT,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            has_entity_name=True,
+                        )
+        )
+
+    def value_changed(self, msg: ESP2Message) -> None:
+        dbm = getattr(msg, "dBm", None)
+        if dbm is None:
+            return
+        self._attr_native_value = dbm
+        self.schedule_update_ha_state()
+
 
 class GatewayInfoField(StaticInfoField):
     """Key value fields for gateway information"""
