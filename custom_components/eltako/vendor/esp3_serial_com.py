@@ -176,6 +176,8 @@ class ESP3SerialCommunicator(Communicator):
                         else:
                             self.logger.warn("[ESP3SerialCommunicator] Cannot convert to esp2 message (%s).", msg)
                     else:
+                        if msg.packet_type == PACKET.RADIO:
+                            self.logger.debug("[ESP3SerialCommunicator] %s dBm: %s", msg.dBm, esp2_msg)
                         self._outside_callback(esp2_msg)
 
             else:
