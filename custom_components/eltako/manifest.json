@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/grimmpp/home-assistant-eltako/issues",
   "loggers": ["eltako"],
   "requirements": ["eltako14bus==0.0.61", "pyserial-asyncio>=0.6", "enocean>=0.60.1", "StrEnum", "pyserial>=3.5"],
-  "version": "1.5.11-avantadis.3"
+  "version": "1.5.11-avantadis.4"
 }
