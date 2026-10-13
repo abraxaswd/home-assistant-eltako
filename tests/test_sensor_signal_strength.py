@@ -47,6 +47,11 @@ class TestSignalStrengthSensor(unittest.TestCase):
         self.assertEqual(s.native_unit_of_measurement, "dBm")
         self.assertTrue(s.unique_id.endswith("_signal_strength"))
 
+    def test_shows_on_auto_generated_dashboard(self):
+        s = self.create_sensor()
+
+        self.assertIsNone(s.entity_category)
+
 
 class TestEsp2TranslationCarriesDbm(unittest.TestCase):
 

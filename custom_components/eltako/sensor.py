@@ -33,7 +33,6 @@ from homeassistant.const import (
     CONF_LANGUAGE,
     UnitOfElectricPotential,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-    EntityCategory,
 )
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -989,7 +988,6 @@ class SignalStrengthSensor(EltakoSensor):
                             device_class=SensorDeviceClass.SIGNAL_STRENGTH,
                             native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
                             state_class=SensorStateClass.MEASUREMENT,
-                            entity_category=EntityCategory.DIAGNOSTIC,
                             has_entity_name=True,
                         )
         )
