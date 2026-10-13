@@ -47,6 +47,17 @@ class TestSignalStrengthSensor(unittest.TestCase):
         self.assertEqual(s.native_unit_of_measurement, "dBm")
         self.assertTrue(s.unique_id.endswith("_signal_strength"))
 
+    def test_records_time_of_last_telegram(self):
+        from datetime import datetime, timezone, timedelta
+        s = self.create_sensor()
+        msg = RPSMessage(address=b'\x05\x90\xD3\x1B', status=0x30, data=b'\x02', outgoing=False)
+        msg.dBm = -84
+
+        s.value_changed(msg)
+
+        last = s.extra_state_attributes["last_telegram"]
+        self.assertLess(datetime.now(timezone.utc) - last, timedelta(seconds=5))
+
     def test_shows_on_auto_generated_dashboard(self):
         s = self.create_sensor()
 

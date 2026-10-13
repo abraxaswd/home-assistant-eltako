@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from eltakobus.util import AddressExpression, b2s
 from eltakobus.eep import *
@@ -997,6 +997,7 @@ class SignalStrengthSensor(EltakoSensor):
         if dbm is None:
             return
         self._attr_native_value = dbm
+        self._attr_extra_state_attributes = {"last_telegram": datetime.now(timezone.utc)}
         self.schedule_update_ha_state()
 
 
