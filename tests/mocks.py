@@ -3,6 +3,8 @@ from typing import Any
 
 from custom_components.eltako.config_helpers import *
 from custom_components.eltako.gateway import EnOceanGateway
+
+asyncio.set_event_loop(asyncio.new_event_loop())
 class BusMock():
 
     def __init__(self):

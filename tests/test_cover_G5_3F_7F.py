@@ -38,6 +38,8 @@ class TestCover(unittest.TestCase):
 
         ec = EltakoCover(Platform.COVER, gateway, dev_id, dev_name, dev_eep, sender_id, sender_eep, device_class, time_closes, time_opens, time_tilts)
         ec.send_message = self.mock_send_message
+        ec._arm_fallback = mock.Mock()
+        ec._cancel_fallback = mock.Mock()
 
         self.assertEqual(ec._attr_is_closing, False)
         self.assertEqual(ec._attr_is_opening, False)
@@ -66,6 +68,8 @@ class TestCover(unittest.TestCase):
 
         ec = EltakoCover(Platform.COVER, gateway, dev_id, dev_name, dev_eep, sender_id, sender_eep, device_class, time_closes, time_opens, time_tilts)
         ec.send_message = self.mock_send_message
+        ec._arm_fallback = mock.Mock()
+        ec._cancel_fallback = mock.Mock()
 
         self.assertEqual(ec._attr_is_closing, False)
         self.assertEqual(ec._attr_is_opening, False)
@@ -350,3 +354,101 @@ class TestCover(unittest.TestCase):
 
 
 
+
+
+class TestCoverFallback(TestCase):
+    """State fallback for actuators that never report the end of a timed run."""
+
+    def mock_send_message(self, msg):
+        self.last_sent_command = msg
+
+    def create_cover(self) -> EltakoCover:
+        settings = DEFAULT_GENERAL_SETTINGS
+        settings[CONF_FAST_STATUS_CHANGE] = False
+        gateway = GatewayMock(settings)
+        dev_eep = EEP.find("G5-3F-7F")
+        sender_eep = EEP.find("H5-3F-7F")
+        ec = EltakoCover(Platform.COVER, gateway, AddressExpression.parse('00-00-00-01'), 'device name', dev_eep,
+                         AddressExpression.parse("00-00-B1-06"), sender_eep, "shutter", 10, 10, None)
+        ec.send_message = self.mock_send_message
+        ec._arm_fallback = mock.Mock()
+        ec._cancel_fallback = mock.Mock()
+        return ec
+
+    def test_commands_arm_fallback(self):
+        ec = self.create_cover()
+
+        ec.close_cover()
+        ec._arm_fallback.assert_called_with(0, 12)
+
+        ec.open_cover()
+        ec._arm_fallback.assert_called_with(100, 12)
+
+        ec._attr_current_cover_position = 100
+        ec.set_cover_position(position=50)
+        ec._arm_fallback.assert_called_with(50, 6)
+
+        ec.stop_cover()
+        ec._arm_fallback.assert_called_with(None, 2)
+
+    def test_no_fallback_without_run_times(self):
+        ec = self.create_cover()
+        ec._time_closes = None
+        ec._time_opens = None
+
+        ec.close_cover()
+        ec.open_cover()
+        ec._arm_fallback.assert_not_called()
+
+    def test_fallback_fired_assumes_end_position(self):
+        ec = self.create_cover()
+        ec._attr_current_cover_position = 100
+        ec._attr_current_cover_tilt_position = 100
+        ec._attr_is_closing = True
+
+        ec._fallback_fired(0)
+        self.assertEqual(ec._attr_is_closed, True)
+        self.assertEqual(ec._attr_is_closing, False)
+        self.assertEqual(ec._attr_is_opening, False)
+        self.assertEqual(ec._attr_current_cover_position, 0)
+        self.assertEqual(ec._attr_current_cover_tilt_position, 0)
+
+        ec._attr_is_opening = True
+        ec._fallback_fired(100)
+        self.assertEqual(ec._attr_is_closed, False)
+        self.assertEqual(ec._attr_is_opening, False)
+        self.assertEqual(ec._attr_current_cover_position, 100)
+        self.assertEqual(ec._attr_current_cover_tilt_position, 100)
+
+        ec._attr_is_closing = True
+        ec._fallback_fired(40)
+        self.assertEqual(ec._attr_is_closed, False)
+        self.assertEqual(ec._attr_is_closing, False)
+        self.assertEqual(ec._attr_current_cover_position, 40)
+
+    def test_fallback_fired_after_stop_keeps_position(self):
+        ec = self.create_cover()
+        ec._attr_current_cover_position = 40
+        ec._attr_is_closing = True
+
+        ec._fallback_fired(None)
+        self.assertEqual(ec._attr_is_closing, False)
+        self.assertEqual(ec._attr_is_opening, False)
+        self.assertEqual(ec._attr_is_closed, False)
+        self.assertEqual(ec._attr_current_cover_position, 40)
+
+    def test_end_report_cancels_fallback(self):
+        ec = self.create_cover()
+
+        ec.value_changed(RPSMessage(address=b'\x00\x00\x00\x01', status=b'\x30', data=b'\x02', outgoing=False))
+        ec._cancel_fallback.assert_not_called()
+
+        ec.value_changed(RPSMessage(address=b'\x00\x00\x00\x01', status=b'\x30', data=b'\x50', outgoing=False))
+        self.assertEqual(ec._cancel_fallback.call_count, 1)
+
+        ec.value_changed(RPSMessage(address=b'\x00\x00\x00\x01', status=b'\x30', data=b'\x70', outgoing=False))
+        self.assertEqual(ec._cancel_fallback.call_count, 2)
+
+        ec._attr_current_cover_position = 100
+        ec.value_changed(Regular4BSMessage(address=b'\x00\x00\x00\x01', status=b'\x20', data=b'\x00\x5a\x02\x0a', outgoing=False))
+        self.assertEqual(ec._cancel_fallback.call_count, 3)

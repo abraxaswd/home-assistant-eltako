@@ -11,6 +11,7 @@ from homeassistant.components.cover import CoverEntity, CoverEntityFeature, ATTR
 from homeassistant.const import CONF_DEVICE_CLASS, Platform, STATE_OPEN, STATE_OPENING, STATE_CLOSED, STATE_CLOSING
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.typing import ConfigType
 
 from .device import *
@@ -70,6 +71,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
         self._attr_current_cover_tilt_position = None
         self._time_closes = time_closes
         self._time_opens = time_opens
+        self._fallback_cancel = None
         self._time_tilts = time_tilts
         
         self._attr_supported_features = (CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP)
@@ -153,6 +155,9 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             self._attr_is_closing = False
             
             self.schedule_update_ha_state()
+
+        if self._time_opens is not None:
+            self._arm_fallback(100, time + 1)
     
 
     def close_cover(self, **kwargs: Any) -> None:
@@ -179,6 +184,9 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             self._attr_is_opening = False
 
             self.schedule_update_ha_state()
+
+        if self._time_closes is not None:
+            self._arm_fallback(0, time + 1)
 
     def set_cover_position(self, **kwargs: Any) -> None:
         """Move the cover to a specific position."""
@@ -227,6 +235,8 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 self._attr_is_opening = False
                 
             self.schedule_update_ha_state()
+
+        self._arm_fallback(position, time + 1)
         
 
     def stop_cover(self, **kwargs: Any) -> None:
@@ -242,6 +252,44 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             self._attr_is_opening = False
 
             self.schedule_update_ha_state()
+
+        self._arm_fallback(None, 2)
+
+
+    def _arm_fallback(self, target_position, seconds):
+        """Assume the end state after the run time if the actuator never reports it."""
+        def _schedule():
+            self._cancel_fallback_in_loop()
+            self._fallback_cancel = async_call_later(
+                self.hass, seconds, lambda _now: self._fallback_fired(target_position))
+
+        self.hass.loop.call_soon_threadsafe(_schedule)
+
+
+    def _cancel_fallback(self):
+        self.hass.loop.call_soon_threadsafe(self._cancel_fallback_in_loop)
+
+
+    def _cancel_fallback_in_loop(self):
+        if self._fallback_cancel is not None:
+            self._fallback_cancel()
+            self._fallback_cancel = None
+
+
+    def _fallback_fired(self, target_position):
+        self._fallback_cancel = None
+        LOGGER.debug(f"[cover {self.dev_id}] No end report from actuator, assuming position {target_position}")
+
+        self._attr_is_opening = False
+        self._attr_is_closing = False
+        if target_position is not None:
+            self._attr_current_cover_position = target_position
+            if target_position in (0, 100):
+                self._attr_current_cover_tilt_position = target_position
+        if self._attr_current_cover_position is not None:
+            self._attr_is_closed = self._attr_current_cover_position == 0
+
+        self.schedule_update_ha_state()
 
 
     def value_changed(self, msg):
@@ -263,6 +311,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 self._attr_is_opening = False
                 self._attr_is_closed = False
             elif decoded.state == 0x50: # closed
+                self._cancel_fallback()
                 self._attr_is_opening = False
                 self._attr_is_closing = False
                 self._attr_is_closed = True
@@ -273,6 +322,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
                 self._attr_is_closing = False
                 self._attr_is_closed = False
             elif decoded.state == 0x70: # open
+                self._cancel_fallback()
                 self._attr_is_opening = False
                 self._attr_is_closing = False
                 self._attr_is_closed = False
@@ -282,6 +332,7 @@ class EltakoCover(EltakoEntity, CoverEntity, RestoreEntity):
             ## is received when cover stops at the desired intermediate position
             ## if not close state is always open (close state should be reported with closed message above)
             elif decoded.time is not None and decoded.direction is not None and self._time_closes is not None and self._time_opens is not None:
+                self._cancel_fallback()
 
                 time_in_seconds = decoded.time / 10.0
 
