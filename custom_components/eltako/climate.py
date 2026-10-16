@@ -6,7 +6,7 @@ import time
 
 from eltakobus.util import AddressExpression
 from eltakobus.eep import *
-from eltakobus.message import ESP2Message
+from eltakobus.message import ESP2Message, Regular4BSMessage
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -252,7 +252,9 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         if self.current_temperature and self.target_temperature:
             LOGGER.debug(f"[climate {self.dev_id}] Send status update: current temp: {target_temp}, mode: {mode}")
             msg = A5_10_06(mode, target_temp, self.current_temperature, self.hvac_action == HVACAction.IDLE).encode_message(address)
-            self.send_message(msg)
+            # DB0 bit 1 cleared = GFVS priority: the TF-UTH takes the setpoint as is instead of clamping it to +-3 K
+            data = bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3] & ~0x02])
+            self.send_message(Regular4BSMessage(address, 0x00, data, True))
         else:
             LOGGER.debug(f"[climate {self.dev_id}] Either no current or target temperature is set. Waiting for status update.")
             #This is always the case when there was no sensor signal after HA started.

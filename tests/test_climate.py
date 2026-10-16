@@ -60,6 +60,20 @@ class TestClimate(unittest.TestCase):
         self.assertEqual( round(cc.target_temperature), target_temp)
         
 
+    def test_setpoint_is_sent_with_priority(self):
+        cc = create_climate_entity()
+        cc.send_message = mock.Mock(return_value=None)
+        msg = A5_10_06(A5_10_06.Heater_Mode.NORMAL, 22, 21, False).encode_message(b'\x00\x00\x00\x01')
+        cc.value_changed(msg)
+
+        cc._send_command(A5_10_06.Heater_Mode.NORMAL, 16)
+
+        cc.send_message.assert_called_once()
+        sent = cc.send_message.call_args[0][0]
+        self.assertEqual(sent.address, b'\x00\x00\xb0\x01')
+        self.assertEqual(sent.data[1], 0x66)
+        self.assertEqual(sent.data[3], 0x0D)
+
     def test_climate_thermostat(self):
         thermostat = DeviceConf({
             CONF_ID: 'FF-FF-FF-01',
