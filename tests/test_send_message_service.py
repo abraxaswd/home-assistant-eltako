@@ -51,6 +51,36 @@ class TestSendMessageService(unittest.IsolatedAsyncioTestCase):
             await g.async_service_send_message(event, True)
 
 
+    async def test_send_raw_4bs_data(self):
+        g = self.create_gateway()
+        sent = []
+        g.send_message = lambda msg: sent.append(msg)
+
+        event = EventMock('service_name', {
+            'id': 'FF-C2-3C-81',
+            'data': '00 66 7f 0b',
+        })
+        await g.async_service_send_message(event, True)
+
+        self.assertEqual(len(sent), 1)
+        msg = sent[0]
+        self.assertEqual(msg.address, b'\xff\xc2\x3c\x81')
+        self.assertEqual(msg.data, b'\x00\x66\x7f\x0b')
+        self.assertEqual(msg.org, 0x07)
+
+    async def test_send_raw_data_rejects_wrong_length(self):
+        g = self.create_gateway()
+        sent = []
+        g.send_message = lambda msg: sent.append(msg)
+
+        event = EventMock('service_name', {
+            'id': 'FF-C2-3C-81',
+            'data': '00 66 7f',
+        })
+        with self.assertRaises(ValueError):
+            await g.async_service_send_message(event, True)
+        self.assertEqual(sent, [])
+
     async def test_write_eep_params_to_docs_file(self):
         text  = '# Paramters for EEPs in Send Message Events \n'
         

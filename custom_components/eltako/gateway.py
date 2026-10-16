@@ -9,7 +9,7 @@ import serial
 import asyncio
 
 from eltakobus.serial import RS485SerialInterfaceV2
-from eltakobus.message import ESP2Message, EltakoPoll
+from eltakobus.message import ESP2Message, EltakoPoll, Regular4BSMessage
 
 from eltakobus.util import AddressExpression
 from eltakobus.eep import EEP
@@ -253,6 +253,21 @@ class EnOceanGateway:
             sender_id:AddressExpression = AddressExpression.parse(sender_id_str)
         except:
             LOGGER.error(f"[Service Send Message: {event.service}] No valid sender id defined. (Given sender id: {sender_id_str})")
+            return
+
+        raw_data = event.data.get("data", None)
+        if raw_data is not None:
+            try:
+                data = bytes.fromhex(str(raw_data).replace("-", " "))
+                if len(data) != 4:
+                    raise ValueError(f"4BS data must be 4 bytes, got {len(data)}")
+                msg = Regular4BSMessage(sender_id[0], 0x00, data, True)
+                LOGGER.debug(f"[Service Send Message: {event.service}] Generated raw message: {msg} Serialized: {msg.serialize().hex()}")
+                self.send_message(msg)
+            except Exception as e:
+                LOGGER.error(f"[Service Send Message: {event.service}] Cannot send raw data '{raw_data}'.", exc_info=True)
+                if raise_exception:
+                    raise e
             return
 
         try:
