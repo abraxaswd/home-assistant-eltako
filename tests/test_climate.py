@@ -74,6 +74,28 @@ class TestClimate(unittest.TestCase):
         self.assertEqual(sent.data[1], 0x66)
         self.assertEqual(sent.data[3], 0x0D)
 
+    def test_setpoint_rounds_up_to_the_next_radio_step(self):
+        cc = create_climate_entity()
+        cc.send_message = mock.Mock(return_value=None)
+        cc.value_changed(A5_10_06(A5_10_06.Heater_Mode.NORMAL, 22, 21, False).encode_message(b'\x00\x00\x00\x01'))
+
+        cc._send_command(A5_10_06.Heater_Mode.NORMAL, 25)
+
+        sent = cc.send_message.call_args[0][0]
+        self.assertEqual(sent.data[1], 160)
+
+    def test_hvac_off_sends_setpoint_zero_to_end_gfvs_control(self):
+        cc = create_climate_entity()
+        cc.send_message = mock.Mock(return_value=None)
+        cc.value_changed(A5_10_06(A5_10_06.Heater_Mode.NORMAL, 22, 21, False).encode_message(b'\x00\x00\x00\x01'))
+
+        cc._send_mode_off()
+
+        four_bs = [c[0][0] for c in cc.send_message.call_args_list if c[0][0].org == 0x07]
+        self.assertEqual(len(four_bs), 1)
+        self.assertEqual(four_bs[0].data[1], 0)
+        self.assertEqual(four_bs[0].data[3], 0x0D)
+
     def test_climate_thermostat(self):
         thermostat = DeviceConf({
             CONF_ID: 'FF-FF-FF-01',

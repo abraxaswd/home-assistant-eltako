@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 
 from eltakobus.util import AddressExpression
@@ -252,8 +253,10 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         if self.current_temperature and self.target_temperature:
             LOGGER.debug(f"[climate {self.dev_id}] Send status update: current temp: {target_temp}, mode: {mode}")
             msg = A5_10_06(mode, target_temp, self.current_temperature, self.hvac_action == HVACAction.IDLE).encode_message(address)
+            # round the setpoint up: the TF-UTH floors to 0.5 K steps, truncating 25.0 would show 24.5
+            target_byte = 0 if mode == A5_10_06.Heater_Mode.OFF else min(255, math.ceil(target_temp / A5_10_06.max_temp * A5_10_06.usr))
             # DB0 bit 1 cleared = GFVS priority: the TF-UTH takes the setpoint as is instead of clamping it to +-3 K
-            data = bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3] & ~0x02])
+            data = bytes([msg.data[0], target_byte, msg.data[2], msg.data[3] & ~0x02])
             self.send_message(Regular4BSMessage(address, 0x00, data, True))
         else:
             LOGGER.debug(f"[climate {self.dev_id}] Either no current or target temperature is set. Waiting for status update.")
@@ -270,6 +273,8 @@ class ClimateController(EltakoEntity, ClimateEntity, RestoreEntity):
         LOGGER.debug(f"[climate {self.dev_id}] Send signal to set mode: OFF")
         address, _ = self._sender_id
         self.send_message(RPSMessage(address, 0x30, b'\x10', True))
+        # a setpoint of 0 ends GFVS control on a TF-UTH thermostat, the RPS above is for FHK relays
+        self._send_command(A5_10_06.Heater_Mode.OFF, 0)
 
 
     def _send_mode_night(self) -> None:
